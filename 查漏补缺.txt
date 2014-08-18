@@ -1,0 +1,6 @@
+1.unicode-escape 与Unicode字面量u""相同的格式
+raw-unicode-escape ur""
+u"你好" =》 unicode("你好","unicode-escape")
+
+f='\u53eb\u6211'  => unicode码
+print(f.decode('unicode-escape'))  
