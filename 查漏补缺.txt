@@ -4,3 +4,14 @@ u"你好" =》 unicode("你好","unicode-escape")
 
 f='\u53eb\u6211'  => unicode码
 print(f.decode('unicode-escape'))  
+
+2.marshal struct pickle
+Why use struct.pack() for pickling but marshal.loads() for
+unpickling?  struct.pack() is 40% faster than marshal.dumps(), but
+marshal.loads() is twice as fast as struct.unpack()!
+
+marshal.loads('i'+struct.pack('<i',10)) == 10 #True
+
+__getstate__()返回值应该是字符串，列表，元组，或字典，__setstate__解包接受值
+
+3.python -i 运行脚本后启动交互式(用于调试)
