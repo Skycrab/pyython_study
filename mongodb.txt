@@ -1,0 +1,7 @@
+1.将所有记录的字段修改
+    #没有，是否插入 #是否多条插入
+ db.arena.update({},{$set:{'surplustime':20}},false,true)
+
+
+2.给数组增加一条记录(嵌入式文档)
+ db.role.update({'openid':'yhb820'},{$push:{"materials":{"materialid":"5","amount":100}}})
