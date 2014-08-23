@@ -48,3 +48,15 @@ class C(B):
 
 
 C().show()
+
+
+7.raise class ,instance 区别
+
+raise Exception == raise Exception()
+
+class MyException(Exception):
+    def __init__(self ,name):
+        pass
+
+raise MyException 
+##TypeError: __init__() takes exactly 2 arguments (1 given)

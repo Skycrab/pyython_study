@@ -17,7 +17,7 @@ __getstate__()返回值应该是字符串，列表，元组，或字典，__sets
 3.python -i 运行脚本后启动交互式(用于调试)
 chr ord
 
-4.int类型检查
+4.int类型检查 => isinstance(1,int)
 isinstance(1, numbers.Integral)
 class I(object):
     __metaclass__ = ABCMeta
@@ -48,3 +48,14 @@ class C(B):
 
 
 C().show()
+
+7.raise class ,instance 区别
+
+raise Exception == raise Exception()
+
+class MyException(Exception):
+    def __init__(self ,name):
+        pass
+
+raise MyException 
+##TypeError: __init__() takes exactly 2 arguments (1 given)
