@@ -1,0 +1,8 @@
+1.在本地分支创建和远程分支对应的分支
+git checkout -b branch-name origin/branch-name
+
+2.建立本地分支和远程分支的关联
+git branch --set-upstream branch-name origin/branch-name
+
+3.获取远程分支代码
+git checkout -b 0.16 origin/0.16
