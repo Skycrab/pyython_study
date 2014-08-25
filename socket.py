@@ -112,6 +112,24 @@ loop.run()
             buff.append(s)
     buff = "".jon(buff)
 
+6.gevent cancel_wait
+
+import gevent
+from gevent.core import loop
+from gevent.server import StreamServer
+
+def f(s, address):
+    print address
+    s.send("hello world\r\n")
+    print s.recv(1024)
+    print s.close()
+    print s.recv(124)
+
+def g():
+    s = StreamServer(("localhost",8000), f)
+    s.serve_forever()
+
+gevent.spawn(g).join()
     
 
 
