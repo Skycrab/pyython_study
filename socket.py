@@ -130,9 +130,38 @@ def g():
     s.serve_forever()
 
 gevent.spawn(g).join()
+
+7.gevent pool的功能实现
+每一个greenlet要结束时将回调pool的_discard方法，这是在add时通过greenlet的rawlink(self._discard)注册的。
+
+
+RLock对同一个greenlet可重入
     
 
+Event提供了一个greenlet去唤醒其它的greenlet机制，在wait中只有flag被设置了(event.set())才会返回，否则会直接回到hub中
+继续事件循环。
+from gevent.event import Event
+e=Event()
+e.wait()
 
+这个很明显将会导致无限循环，提示gevent.hub.LoopExit: This operation would block forever
+因为在loop中没有事件将导致循环退出，我们可以看看loop的run方法
+def run(self):
+        assert self is getcurrent(), 'Do not call Hub.run() directly'
+        while True:
+            #raise Exception(11)
+            loop = self.loop
+            loop.error_handler = self
+            try:
+                loop.run()
+            finally:
+                loop.error_handler = None  # break the refcount cycle
+            self.parent.throw(LoopExit('This operation would block forever'))
 
+很明显，只要循环退出就会抛出LoopExit异常
+
+其实gevent的Semaphore和Event并没有大的区别，虽然Semaphore的实现是通过_Semaphore.pyd提供的，
+但如果你翻看下源码就会发现，_Semaphore.pyx中没有半点Cython的代码，全都是Python的代码，我想
+这么干的出发点应该是想通过pyx加速py代码。
 
 

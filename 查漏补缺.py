@@ -60,3 +60,36 @@ class MyException(Exception):
 
 raise MyException 
 ##TypeError: __init__() takes exactly 2 arguments (1 given)
+
+8.
+sys.executable => "c:\\python\\python.exe"
+
+
+
+9. python frame, tb
+
+
+code = 199
+
+def g():
+    gname = 999
+    f()
+
+def f(n='name'):
+    age = 19
+    raise ValueError(111)
+
+def h():
+    h = 78
+    try:
+        g()
+    except:
+        import traceback
+        print sys.exc_info()
+        b = sys.exc_info()[2]
+        print b.tb_next.tb_frame.f_locals  # {'gname': 999}
+        print b.tb_next.tb_next.tb_frame.f_locals  # {'age': 19, 'n': 'name'}
+        print b.tb_frame.f_locals  # {'h': 78, 'b': <traceback object at 0x02515EE0>}
+        print b.tb_frame.f_back.f_locals # 全局{'h': 78, 'b': <traceback object at 0x02515EE0>}
+
+h()
