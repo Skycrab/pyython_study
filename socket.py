@@ -268,7 +268,7 @@ ready() => 判断是否结束
             raise Timeout
 
 明白了get你再去看看join,逻辑几乎一样，只是少了返回value值，懂了上面get的逻辑，也就知道了
-为什么join能等待
+为什么join能等待Greenlet结束了。
 
 
 
