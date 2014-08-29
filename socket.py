@@ -271,6 +271,34 @@ ready() => 判断是否结束
 为什么join能等待Greenlet结束了。
 
 
+9.gevent hub
+
+class Hub(greenlet):
+    def wait(self, watcher):
+        waiter = Waiter()
+        unique = object()
+        watcher.start(waiter.switch, unique)
+        try:
+            result = waiter.get()
+            assert result is unique, 'Invalid switch into %s: %r (expected %r)' % (getcurrent(), result, unique)
+            #这里为什么要assert？
+            #因为正常肯定是loop调用waiter.switch(unique),那么waiter.get()获取的肯定是unique,
+            #如果不是unique，肯定是有其它地方调用waiter.switch，这很不正常
+        finally:
+            watcher.stop()
+
+可看如下代码:
+def f(t):
+    gevent.sleep(t)
+
+p = gevent.spawn(f,2)
+gevent.sleep(0)  # wait for p to start, because actual order of switching is reversed
+switcher = gevent.spawn(p.switch, 'hello')
+result = p.get()
+
+将报如下异常：
+AssertionError: Invalid switch into <Greenlet at 0x252c2b0: f(2)>: 'hello' (expected <object object at 0x020414E0>)
+<Greenlet at 0x252c2b0: f(2)> failed with AssertionError
 
 
 
