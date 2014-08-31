@@ -300,6 +300,51 @@ result = p.get()
 AssertionError: Invalid switch into <Greenlet at 0x252c2b0: f(2)>: 'hello' (expected <object object at 0x020414E0>)
 <Greenlet at 0x252c2b0: f(2)> failed with AssertionError
 
+10. gevent timeout
+用法
+Timeout对象有pending属性，判断是是否还未运行
+
+t=Timeout(1)
+t.start()
+try:
+    print 'aaa'
+    import time
+    assert t.pending == True
+    time.sleep(2)
+    gevent.sleep(0.1) 
+    #注意这里不可以是sleep(0),虽然sleep(0)也切换到hub,定时器也到了，但gevent注册的回调
+    #是优先级是高于定时器的(在libev事件循环中先调用callback,然后才是timer)
+except Timeout,e:
+    assert t.pending == False
+    assert e is t #判断是否是我的定时器，和上面的assert一致，防止不是hub调用t.switch
+    print sys.exc_info()
+finally: #取消定时器，不管定时器是否可用，都可取消
+    t.cancel()
+
+Timout对象还提供了with上下文支持:
+with Timeout(1) as t:
+    assert t.pending
+    gevent.sleep(0.5)
+assert not t.pending
+
+Timeout第二个参数可以自定义异常，如果是Fasle,with上下文将不传递异常
+sys.exc_clear()
+with Timeout(1,False) as t:
+    assert t.pending
+    gevent.sleep(2)
+assert not sys.exc_info()[1]
+我们看到并没有抛出异常
 
 
+还有一个with_timeout，
+def f():
+    import time
+    time.sleep(2)
+    gevent.sleep(0.1) #不能使用gevent.sleep(0)
+    print 'fff'
+
+t = with_timeout(1,f,timeout_value=10)
+assert t == 10
+
+注意with_timeout必须有timeout_value参数时才不会抛Timeout异常。
 

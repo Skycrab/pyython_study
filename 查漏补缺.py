@@ -93,3 +93,78 @@ def h():
         print b.tb_frame.f_back.f_locals # 全局{'h': 78, 'b': <traceback object at 0x02515EE0>}
 
 h()
+
+sys._getframe(0) =>返回当前栈
+sys._getframe(1) =>返回当前调用栈
+sys._current_frames() =>{3420: <frame object at 0x02565F98>} =>(threadid,frame)
+
+10. 
+sys.exc_info和sys.last_type区别在于sys.exc_info是线程安全的
+sys.exc_clear只清除调用线程特有的信息
+sys.getsizeof() == object.__sizeof__() 
+
+11.randon模块中的函数都不是线程安全的，如果要在不同的线程中生成随机数，
+应该使用锁防止并发。
+
+12.
+collections模块
+words1 = defaultdict(list)
+words1.append(n)
+比dict快
+words.setdefault(w,[]).append(n) 
+
+namedtuple的属性访问没有类高效，比类访问速度慢两倍
+
+13.contextlib
+
+class GeneratorContextManager(object):
+    """Helper for @contextmanager decorator."""
+
+    def __init__(self, gen):
+        self.gen = gen
+
+    def __enter__(self):
+        try:
+            return self.gen.next()
+        except StopIteration:
+            raise RuntimeError("generator didn't yield")
+
+    def __exit__(self, type, value, traceback):
+        if type is None:
+            try:
+                self.gen.next() 
+            except StopIteration:
+                return #正常没有异常将直接返回
+            else:
+                raise RuntimeError("generator didn't stop")
+        else:
+            if value is None:
+                # Need to force instantiation so we can reliably
+                # tell if we get the same exception back
+                value = type()
+            try:
+                self.gen.throw(type, value, traceback)
+                raise RuntimeError("generator didn't stop after throw()")
+            except StopIteration, exc:
+                # Suppress the exception *unless* it's the same exception that
+                # was passed to throw().  This prevents a StopIteration
+                # raised inside the "with" statement from being suppressed
+                #一般来讲，gen
+                #try:
+                #   pass
+                #except:
+                #   pass 在这里没有抛出其它的异常，gen.throw将导致fun抛出StopIteration,
+                #所以运行到这里
+                return exc is not value
+            except:
+                # only re-raise if it's *not* the exception that was
+                # passed to throw(), because __exit__() must not raise
+                # an exception unless __exit__() itself failed.  But throw()
+                # has to raise the exception to signal propagation, so this
+                # fixes the impedance mismatch between the throw() protocol
+                # and the __exit__() protocol.
+                #
+                #如果没有捕获抛出了其它异常，将走到这里，基本上下面是True的，除非你在yield那边捕获
+                #gen.throw抛出的value
+                if sys.exc_info()[1] is not value:
+                    raise
