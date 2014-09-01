@@ -348,3 +348,145 @@ assert t == 10
 
 注意with_timeout必须有timeout_value参数时才不会抛Timeout异常。
 
+11.gevent switch_out
+在gevent中switch_out是和switch相对应的一个概念，当切换到Greenlet时将调用switch方法，
+切换到hub时将调用Greenlet的switch_out方法，也就是给Greenlet一个保存恢复的功能。
+gevent中backdoor.py(提供了一个python解释器的后门)使用了switch,我们来看看
+
+class SocketConsole(Greenlet):
+
+    def switch(self, *args, **kw):
+        self.saved = sys.stdin, sys.stderr, sys.stdout
+        sys.stdin = sys.stdout = sys.stderr = self.desc
+        Greenlet.switch(self, *args, **kw)
+
+    def switch_out(self):
+        sys.stdin, sys.stderr, sys.stdout = self.saved
+
+因为交换环境需要使用sys.stdin,sys.stdout,sys.stderr，所以当切换到我们Greenlet时，把这三个变量都替换成我们自己的
+socket描述符，但当要切换到hub时需要恢复这三个变量，所以在switch中先保存，在switch_out中再恢复。
+
+因为Greenlet通过hub.switch切换到hub的，所以在hub.switch中肯定有调用之前Greenlet.switch_out方法。
+class Hub(Greenlet):
+    def switch(self):
+        #我们看到的确是先调用先前的Greenlet.switch_out
+        switch_out = getattr(getcurrent(), 'switch_out', None)
+        if switch_out is not None:
+            switch_out()
+        return greenlet.switch(self)
+
+可以通过下面两句话就启动一个python后门解释器：
+from gevent.backdoor import BackdoorServer
+BackdoorServer(('127.0.0.1', 9000)).serve_forever()
+
+通过telnet,你可以为所欲为。
+
+12.gevent core就是封装了libev,使用了cython的语法，感兴趣童鞋可以好好研究研究。
+其实libev是有python的封装pyev(https://pythonhosted.org/pyev/)，不过pyev是使用C来写扩展的，
+代码巨复杂。我找到一中文文档，http://dirlt.com/libev.html
+
+
+class loop:
+    def __init__(self, object flags=None, object default=None, size_t ptr=0):
+        pass
+
+flags: 确定后端使用的异步IO模型,如"select, epoll",可直接字符串也可数字(需参考libev/ev.h)
+default：是否使用libev的默认loop,否则将创建一个新的loop
+
+可通过loop.backend确定是否和你设置一致，loop.backend_int返回libev内部对应序号
+如：
+from gevent import core
+flag = "select"
+loop=core.loop(flag)
+assert loop.backend == flag
+assert core._flags_to_int(flag) == loop.backend_int
+
+libev支持的观测器(watcher)：
+所有watcher都通过start启动，并传递回调函数
+1.io：
+    loop.io(int fd, int events, ref=True, priority=None)
+        fd: 文件描述符,可通过sock.fileno()获取
+        events: 事件 1:read 2:write 3.read_write
+
+        下面两个参数所有watcher都适用
+        ref: 是否增加mainLoop的引用次数，默认是增加的。在libev中watcher.start都会增加引用次数,watcher.stop都会减少引用次数。
+            当libev发现引用次数为0，也就没有需要监视的watcher，循环就会退出。
+        priority: 设置优先级
+
+2.timer定时器
+    loop.timer(double after, double repeat=0.0, ref=True, priority=None)
+        after: 多久后启动
+        repeat: 多次重复之间间隔
+    可通过一下小程序看看:
+    def f():
+        print time.time()
+        print 'eeeee'
+    from gevent.core import loop
+    l = loop()
+    timer = l.timer(2,3) #2秒后启动，3秒后再次启动
+    print time.time()
+    timer.start(f)
+    l.run()
+
+3.signer信号 收到信号处理方式
+    loop.signal(int signum, ref=True, priority=None)
+
+
+4.async 唤醒线程
+    loop.async(ref=True, priority=None)
+
+5.ev_prepare  每次event loop之前事件
+    loop.prepare(ref=True, priority=None)
+    还记得上面timeout中说的，在loop中回调比定时器优先级高，在loop中是没有添加回调的，gevent是通过
+    ev_prepare实现的，具体实现原理在下面。  
+
+
+6.ev_check 每次event loop之后事件
+    loop.check(ref=True, priority=None)
+    这个和ev_prepare刚好相反
+
+
+我们可以看一下ev_run:
+
+int
+ev_run (EV_P_ int flags)
+{
+  do
+    {
+      ......
+    }
+  while (expect_true (
+    activecnt
+    && !loop_done
+    && !(flags & (EVRUN_ONCE | EVRUN_NOWAIT))
+  ));
+
+  return activecnt;
+}
+
+其中activecnt就是我们上面说的loop的引用计数，所以除非特殊情况ref最好为True。
+
+
+gevent loop.run_callback实现原理：
+    1.loop.run_callback会向loop._callbacks中添加回调
+    2.在loop的__init__中初始化prepare: libev.ev_prepare_init(&self._prepare, <void*>gevent_run_callbacks)
+        注册回调为gevent_run_callbacks
+    3.在gevent_run_callbacks中会调用loop的_run_callbacks
+        result = ((struct __pyx_vtabstruct_6gevent_4core_loop *)loop->__pyx_vtab)->_run_callbacks(loop);
+    4.loop的_run_callbacks中会逐个调用_callbacks中的回调
+
+这也就是为什么说callback优先级高的原因。
+
+loop.run_callback返回的是一个callback对象，具有stop(),pending属性，也就是说如果回调还没运行，我们可以通过stop()方法停止。
+事例代码如下：
+def f(a):
+    a.append(1)
+
+from gevent.hub import get_hub
+loop = get_hub().loop
+a= []
+f = loop.run_callback(f,a)
+f.stop()
+gevent.sleep(0)
+assert not f.pending #没有阻塞可能是已运行或被停止
+assert not a
