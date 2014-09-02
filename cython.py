@@ -11,4 +11,59 @@ cpdef既可以在Cython中调用也可以在Python中调用，可以说是两者
 
 在cdef class中(扩展类型)，def与cdef定义的可以被继承，所以cython需要判断cpdef定义的方法是否被覆盖，这也加剧了cpdef与cdef慢。
 
-cdef double f(double) except? -2 =》 返回-2时就是出错了
+
+cpdef 只用于函数(可实现复写)
+
+cdef class Function:
+    cpdef double evaluate(self, double x) except *:
+        return 0
+
+cdef class SinOfSquareFunction(Function):
+    cpdef double evaluate(self, double x) except *:
+        return sin(x**2)
+
+2.cimport cython
+@cython.boundscheck(False) => 关闭负数下标处理
+@cython.wraparound(False) => 关闭越界检查
+
+3.
+pyd 头文件 cimport
+pyi include文件 include "spamstuff.pxi"
+
+4.
+cdef char *s
+s = pystring1 + pystring2 XXXX
+这回产生临时变量，导致s悬疑指针
+
+p = pystring1 + pystring2
+s = p
+
+5.内型转换
+<type>a 这并不检查，直接转换
+<type*>a 会检查
+
+6.
+cdef int spam() except -1 =》spam发生错误将返回-1
+
+cdef int spam() except? -1 =》-1仅仅是可能错误，
+如果返回-1，cython会调用PyErr_Occurred去判断是否有异常
+
+cdef int spam() except * =》cython每次都会调用yErr_Occurred
+
+7.编译时定义
+DEF FavouriteFood = "spam"
+DEF ArraySize = 42
+DEF OtherArraySize = 2 * ArraySize + 17
+
+cdef int a1[ArraySize]
+cdef int a2[OtherArraySize
+
+8.条件语句
+IF UNAME_SYSNAME == "Windows":
+    include "icky_definitions.pxi"
+ELIF UNAME_SYSNAME == "Darwin":
+    include "nice_definitions.pxi"
+ELIF UNAME_SYSNAME == "Linux":
+    include "penguin_definitions.pxi"
+ELSE:
+    include "other_definitions.pxi"
