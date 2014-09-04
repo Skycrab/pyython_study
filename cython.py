@@ -1,5 +1,37 @@
 cython学习笔记
 
+windows环境搭建：
+安装cython,mingw32
+
+#1.C:\Python27\Lib\distutils\distutils.cfg
+[build]
+compiler = mingw32
+
+[build_ext]
+compiler = mingw32
+#2.helloword.pyx
+cdef extern from"stdio.h":
+    extern int printf(const char *format, ...) 
+def SayHello():
+    printf("hello,world\n")
+#3.setup.py
+from distutils.core import setup
+from distutils.extension import Extension
+from Cython.Build import cythonize
+ 
+setup(
+  name = 'helloworld',
+  ext_modules=cythonize([
+    Extension("helloworld", ["helloworld.pyx"]),
+    ]),
+)
+#4.python setup.py build --compiler=minigw32
+
+
+class 文档：
+http://docs.cython.org/src/userguide/extension_types.html?highlight=class
+
+
 1.cdef 与cpdef
 C函数定义使用cdef，参数是Python对象也可以是C值，返回值可以使Python对象也可以是值
 cdef定义的方法只能在cython中调用
@@ -67,3 +99,61 @@ ELIF UNAME_SYSNAME == "Linux":
     include "penguin_definitions.pxi"
 ELSE:
     include "other_definitions.pxi"
+
+9.cdef extern
+如果你需要包括一个头文件，这个头文件是别的头文件所要的，但是不想使用其中的任何声明，那么只要在后面的代码块中填上pass就行了，如：
+cdef extern from “spam.h”:
+    pass
+如果你想包括一些外部的声明，但不想指定头文件，因为它们所在的头文件，你已经在其它地方包括了，在头文件名的地方你可以使用*来代替。例如：
+cdef extern from *:
+
+10. forward declaration 解决互相引用
+cdef class Shrubbery # forward declaration
+
+cdef class Shrubber:
+    cdef Shrubbery work_in_progress
+
+cdef class Shrubbery:
+    cdef Shrubber creator
+
+
+如果有基类，也需要指出: cdef class Shrubbery(Basebery)
+
+11.创建对象
+cdef class P:
+    cdef object food
+
+    def __cinit__(self, food):
+        print 'cinit'
+        print food
+        self.food = food
+
+    def __init__(self, food):
+        print("eating!")
+        print food
+
+P('fish') => __cinit__和__init__都会调用
+P.__new__(P,'fish') =>只会调用__cinit__
+
+如果需要多个实例，可以使用cython.freelist
+
+cimport cython
+
+@cython.freelist(8)
+cdef class Penguin:
+    cdef object food
+    def __cinit__(self, food):
+        self.food = food
+
+penguin = Penguin('fish 1')
+penguin = None
+penguin = Penguin('fish 2')  # does not need to allocate memory!
+
+
+public class需要使用名字制定从句(Name specification clause)定义[object object_struct_name, type type_object_name ]
+
+因为是public，说明其它的C需要使用，所以需要定义object_struct_name以生成相对应的结构体
+cdef public class Person [object PPerson, type PPType]:
+    cdef public int age
+    def __init__(self, object age):
+        self.age = age

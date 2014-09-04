@@ -168,3 +168,13 @@ class GeneratorContextManager(object):
                 #gen.throw抛出的value
                 if sys.exc_info()[1] is not value:
                     raise
+
+14.datetime模块
+d1 = datetime.datetime.now()
+d2 = datetime.datetime(2014, 9, 4, 9, 42)
+d = d1 - d2
+d.days() =>返回的是两者时间差的天数
+
+要返回天数之差可转换为Date
+d = d1.date() - d2.date()
+
