@@ -152,8 +152,27 @@ penguin = Penguin('fish 2')  # does not need to allocate memory!
 
 public class需要使用名字制定从句(Name specification clause)定义[object object_struct_name, type type_object_name ]
 
-因为是public，说明其它的C需要使用，所以需要定义object_struct_name以生成相对应的结构体
+因为是public，说明其它的C需要使用，所以需要定义object_struct_name以生成相对应的结构体,以及type_object_name生成对应的type类型
+
 cdef public class Person [object PPerson, type PPType]:
     cdef public int age
     def __init__(self, object age):
         self.age = age
+
+对应的会生成如下.h(.c)文件：
+struct PPerson {
+  PyObject_HEAD
+  int age;
+};
+
+DL_EXPORT(PyTypeObject) PPType = {
+  PyVarObject_HEAD_INIT(0, 0)
+  __Pyx_NAMESTR("helloworld.Person"), /*tp_name*/
+  sizeof(struct PPerson), /*tp_basicsize*/
+  0, /*tp_itemsize*/
+  __pyx_tp_dealloc_10helloworld_Person, /*tp_dealloc*/
+  0, /*tp_print*/
+  0, /*tp_getattr*/
+  0, /*tp_setattr*/
+  ...
+}
