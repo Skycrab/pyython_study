@@ -193,3 +193,20 @@ with codecs.open("cs.txt",'r','gbk') as f: #cs.txt为gbk编码
 
 16.re模块 
 {m,n}? 
+"\s" => "[\t\r\n\f\v]"
+
+In [27]: r=re.compile(r":(?P<name>.+)")
+
+In [28]: m=r.search("name:lwy")
+
+In [29]: m.expand("hello \g<name>") #命名引用
+Out[29]: 'hello lwy'
+
+17.struct模块
+In [95]: struct.pack('5p','1234') => p 第一个字节是字符串长度
+Out[95]: '\x041234'
+
+struct.pack('0s','1234') => 长度为0的字符串
+有时候，必须对齐结构的末尾，可使用该类型的来结束结构格式字符串，重复次数为0
+如"llh01" =>l是4字节对齐，由于有h,所以会在最后插入两个填充字节。
+这只适用于使用本机大小和对齐方式，标准大小和对齐方式不会强制实施对齐规则。
