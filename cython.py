@@ -176,3 +176,12 @@ DL_EXPORT(PyTypeObject) PPType = {
   0, /*tp_setattr*/
   ...
 }
+
+
+
+
+
+Cython优化笔记(http://wiki.sagemath.org/WritingFastPyrexCode)
+ 
+1.Type checking
+使用PyObject_TypeCheck(x, X) 代替isinstance(x, X)

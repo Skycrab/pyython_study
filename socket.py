@@ -96,7 +96,7 @@ loop.run()
                         result = waiter.get()
                         assert result is unique, 'Invalid switch into %s: %r (expected %r)' % (getcurrent(), result, unique)
                     finally:
-                    watcher.stop()
+                        watcher.stop()
             当loop捕获到”可读事件“时，将会回调waiter.switch方法，此时将回到这里(因为while循环)继续执行sock.recv(*args)
             一般来说当重新recv时肯定是可以读到数据的，将直接返回
             """
@@ -198,9 +198,7 @@ ready() => 判断是否结束
                 return
             self._report_result(result) #设置返回结果，这是个比较重要的方法，下面会单独看看
         finally:
-            self.__dict__.pop('_run', None)
-            self.__dict__.pop('args', None)
-            self.__dict__.pop('kwargs', None)
+            pass
 
 一切顺利，没有异常将调用_report_result方法，我们具体看看：
     def _report_result(self, result):
@@ -251,11 +249,6 @@ ready() => 判断是否结束
                 finally:
                     t.cancel()
             except:
-                # unlinking in 'except' instead of finally is an optimization:
-                # if switch occurred normally then link was already removed in _notify_links
-                # and there's no need to touch the links set.
-                # Note, however, that if "Invalid switch" assert was removed and invalid switch
-                # did happen, the link would remain, causing another invalid switch later in this greenlet.
                 self.unlink(switch)
                 raise
             #运行到这里，其实Greenlet已经结束了，换句话说self.ready()肯定为True
@@ -292,8 +285,8 @@ def f(t):
     gevent.sleep(t)
 
 p = gevent.spawn(f,2)
-gevent.sleep(0)  # wait for p to start, because actual order of switching is reversed
-switcher = gevent.spawn(p.switch, 'hello')
+gevent.sleep(0) # 2s后libev将回调f，所以下面p.get获取的是2 
+switcher = gevent.spawn(p.switch, 'hello') #强先回调p.switch,传递参数hello
 result = p.get()
 
 将报如下异常：
@@ -401,7 +394,7 @@ loop=core.loop(flag)
 assert loop.backend == flag
 assert core._flags_to_int(flag) == loop.backend_int
 
-libev支持的观测器(watcher)：
+libev支持的watcher：
 所有watcher都通过start启动，并传递回调函数
 1.io：
     loop.io(int fd, int events, ref=True, priority=None)
@@ -430,10 +423,30 @@ libev支持的观测器(watcher)：
 
 3.signer信号 收到信号处理方式
     loop.signal(int signum, ref=True, priority=None)
+hub中有封装signal,使用如下：
+def f():
+    raise ValueError('signal')
+sig = gevent.signal(signal.SIGALRM, f)
+assert sig.ref is False
+signal.alarm(1)
+try:
+    gevent.sleep(2)
+    raise AssertionError('must not run here')
+except ValueError:
+    assert str(sys.exc_info()[1]) == 'signal'
 
+和其它watcher不同的是ref默认是False,因为信号并不是必须的，所以循环不需等待信号发生。
 
 4.async 唤醒线程
     loop.async(ref=True, priority=None)
+    这主要是通过管道实现的，async.send方法将向管道发送数据，循环检查到读事件唤醒线程.
+    hub = gevent.get_hub()
+    watcher = hub.loop.async()
+    gevent.spawn_later(0.1, thread.start_new_thread, watcher.send, ())
+    start = time.time()
+    with gevent.Timeout(0.3):
+        hub.wait(watcher)
+
 
 5.ev_prepare  每次event loop之前事件
     loop.prepare(ref=True, priority=None)
@@ -444,6 +457,19 @@ libev支持的观测器(watcher)：
 6.ev_check 每次event loop之后事件
     loop.check(ref=True, priority=None)
     这个和ev_prepare刚好相反
+
+7.stat 文件属性变化
+    loop.stat(path, float interval=0.0, ref=True, priority=None)
+    interval说明期望多久以后libev开始检测文件状态变化
+
+开两个窗口，一个运行该程序，另一个可touch cs.log文件，文件有无也是状态变化
+hub = gevent.get_hub()
+filename = 'cs.log'
+watcher = hub.loop.stat(filename,2) #2s以后才监听文件状态
+def f():
+    print os.path.exists(filename)
+watcher.start(f)
+gevent.sleep(100)
 
 
 我们可以看一下ev_run:
@@ -490,3 +516,8 @@ f.stop()
 gevent.sleep(0)
 assert not f.pending #没有阻塞可能是已运行或被停止
 assert not a
+
+考虑一下，为什么libev.ev_prepare_init(&self._prepare, <void*>gevent_run_callbacks)回调的是gevent_run_callbacks，
+然后最后还是调用loop的_run_callbacks,为什么不直接把_run_callbacks作为回调？
+想一想就知道了，因为ev_prepare_init的回调具有固定格式，
+# define EV_CB_DECLARE(type) void (*cb)(EV_P_ struct type *w, int revents);

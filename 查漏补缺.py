@@ -178,3 +178,18 @@ d.days() =>返回的是两者时间差的天数
 要返回天数之差可转换为Date
 d = d1.date() - d2.date()
 
+15.codecs模块
+提供了编解码支持
+EncodedFile:
+#encoding=utf8
+f=open('cs.txt','w')
+ff=codecs.EncodedFile(f, 'utf8','gbk') #从utf8->gbk
+ff.write("你妹")
+
+#open read()后字符为unicode编码
+with codecs.open("cs.txt",'r','gbk') as f: #cs.txt为gbk编码
+    g=open('cs2.txt','w')
+    g.write(f.read().encode('utf8'))
+
+16.re模块 
+{m,n}? 
