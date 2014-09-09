@@ -450,6 +450,42 @@ except ValueError:
 
     gevent中线程池中使用了async,当worker线程运行回调函数后，设置返回值，通过async.send唤醒hub主线程
 
+5.fork 子进程事件
+    loop.fork(ref=True, priority=None)
+    当调用fork时将会回调注册的子进程watcher,但必须得调用libev.ev_loop_fork才有效，
+而且要在子进程中使用libev也必须要调用libev.ev_loop_fork
+    在gevent的threadpool中使用了fork监视器
+    self.fork_watcher = hub.loop.fork(ref=False)
+    self.fork_watcher.start(self._on_fork)
+    def _on_fork(self):
+        # fork() only leaves one thread; also screws up locks;
+        # let's re-create locks and threads
+        pid = os.getpid()
+        if pid != self.pid:
+            self.pid = pid
+            # Do not mix fork() and threads; since fork() only copies one thread
+            # all objects referenced by other threads has refcount that will never
+            # go down to 0.
+            self._init(self._maxsize)
+    回调_on_fork目的就是重新初始化线程池，但是刚才说了子进程要有效必须要调用libev.ev_loop_fork，
+这又是在在哪里调用的呢？
+if hasattr(os, 'fork'):
+    _fork = os.fork
+
+    def fork():
+        result = _fork()
+        if not result: #子进程
+            reinit() #调用libev.ev_loop_fork
+        return result
+问题的关键就是gevent/os.py中重定义了fork函数,当fork返回0，也就是子进程，将调用reinit
+最后真正调用的就是core.pyx的loop.reinit
+    def reinit(self):
+        if self._ptr:
+            libev.ev_loop_fork(self._ptr)
+
+gevent中的线程池在gevent中使用的很广，尤其是windows中，如dns请求，os.read write都是通过线程池，
+花点时间看看threadpool.py源码，会收获很多。
+
 
 5.ev_prepare  每次event loop之前事件
     loop.prepare(ref=True, priority=None)
@@ -519,6 +555,10 @@ f.stop()
 gevent.sleep(0)
 assert not f.pending #没有阻塞可能是已运行或被停止
 assert not a
+
+如果注释掉f.stop(),那么a是[1],因为gevent.sleep(0)也是直接run_callback,肯定是谁先加入谁先调用，
+但如果是其它watcher就没有机会调用了。
+
 
 考虑一下，为什么libev.ev_prepare_init(&self._prepare, <void*>gevent_run_callbacks)回调的是gevent_run_callbacks，
 然后最后还是调用loop的_run_callbacks,为什么不直接把_run_callbacks作为回调？
