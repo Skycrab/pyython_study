@@ -178,6 +178,10 @@ DL_EXPORT(PyTypeObject) PPType = {
 }
 
 
+CPython常用函数：
+PyAPI_FUNC和PyAPI_DATA都是讲函数和数据导出
+define PyAPI_FUNC(RTYPE) __declspec(dllexport) RTYPE
+define PyAPI_DATA(RTYPE) extern __declspec(dllexport) RTYPE
 
 
 

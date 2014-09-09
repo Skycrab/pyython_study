@@ -5,3 +5,13 @@
 
 2.给数组增加一条记录(嵌入式文档)
  db.role.update({'openid':'yhb820'},{$push:{"materials":{"materialid":"5","amount":100}}})
+
+
+mogonengine:
+http://mongoengine-odm.readthedocs.org/en/latest/guide/querying.html#atomic-updates
+
+# 更新嵌入文档comments字段by的值为joe的文档字段votes增加1
+Page.objects(comments_by=”joe”).update(inc__votes=1)
+
+# 更新嵌入文档comments字段by的值为joe的文档字段votes设置为1
+Page.objects(comments_by=”joe”).update(set__votes=1)
