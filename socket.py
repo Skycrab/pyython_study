@@ -378,6 +378,7 @@ BackdoorServer(('127.0.0.1', 9000)).serve_forever()
 其实libev是有python的封装pyev(https://pythonhosted.org/pyev/)，不过pyev是使用C来写扩展的，
 代码巨复杂。我找到一中文文档，http://dirlt.com/libev.html
 
+http://www.cnblogs.com/wunaozai/p/3950249.html
 
 class loop:
     def __init__(self, object flags=None, object default=None, size_t ptr=0):
@@ -446,6 +447,8 @@ except ValueError:
     start = time.time()
     with gevent.Timeout(0.3):
         hub.wait(watcher)
+
+    gevent中线程池中使用了async,当worker线程运行回调函数后，设置返回值，通过async.send唤醒hub主线程
 
 
 5.ev_prepare  每次event loop之前事件
@@ -521,3 +524,25 @@ assert not a
 然后最后还是调用loop的_run_callbacks,为什么不直接把_run_callbacks作为回调？
 想一想就知道了，因为ev_prepare_init的回调具有固定格式，
 # define EV_CB_DECLARE(type) void (*cb)(EV_P_ struct type *w, int revents);
+
+
+
+
+
+
+
+
+13.gevent threadpool
+
+hub中有一个线程池，大小为10
+
+apply_async 
+
+import gevent
+from gevent import get_hub
+def g(r):
+    print r
+pool = get_hub().threadpool
+pool.apply_async(f,(6,33),callback=g)
+pool.apply_async(f,(2,22),callback=g)
+gevent.sleep(10)
