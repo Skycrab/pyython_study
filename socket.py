@@ -586,3 +586,34 @@ pool = get_hub().threadpool
 pool.apply_async(f,(6,33),callback=g)
 pool.apply_async(f,(2,22),callback=g)
 gevent.sleep(10)
+
+
+
+14.c-ares
+
+cares.ares_library_init(cares.ARES_LIB_INIT_ALL)
+初始化ares库，其实只对windows平台做了处理，主要是为了加载iphlpapi.dll，在非windows平台可不调用。
+如果调用一定要在c-ares任何函数之前调用。
+
+cares.ares_library_cleanup()
+相对于cares.ares_library_init，在windows平台将释放iphlpapi.dll，非windows平台可不调用。
+gevent中并没有调用该函数，作者在__dealloc__中也用？号表明了这一点，我不太理解，可能有更好的理由吧。
+
+cares.ares_destroy(self.channel)
+销毁channel，释放内存，关闭打开的socket,这是在__dealloc__中调用
+
+cares.ares_init_options(&channel, &options, optmask)
+这是ares中最核心的函数，用于初始化channel,options，optmask主要是通过channel的__init__构造
+def __init__(self, object loop, flags=None, timeout=None, tries=None, ndots=None,
+                 udp_port=None, tcp_port=None, servers=None):
+flags用于控制一查询行为，如ARES_FLAG_USEVC，将只发送TCP请求(我们知道DNS既有TCP也有UDP)
+ARES_FLAG_PRIMARY :只向第一个服务器发送请求，还有其它选项参考ares_init_options函数文档
+timeout：指明第一次请求的超时时间，单位为秒,c-ares单位为毫秒，gevent会转换，第一次之后的超时c-area有它自己的算法
+tries：请求尝试次数，默认4次
+ndots：最少'.'的数量，默认是1，如果大于1,就直接查找域名，不然会和本地域名合并(init_by_environment设置本地域名)
+udp_port，tcp_port：使用的udp,tcp端口号，默认53
+servers：发送dns请求的服务器，见下面ares_set_servers
+
+cares.ares_set_servers(self.channel, cares.ares_addr_node* c_servers)
+设置dns请求服务器，设置完成需要free掉c_servers的内存空间，因为ares_set_servers中重新malloc内存空间了。
+
