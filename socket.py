@@ -614,6 +614,49 @@ ndots：最少'.'的数量，默认是1，如果大于1,就直接查找域名，
 udp_port，tcp_port：使用的udp,tcp端口号，默认53
 servers：发送dns请求的服务器，见下面ares_set_servers
 
+ndots多说一句，比如ping bifeng(这是我一同事的主机),检测发现没有'.'(也就是小于ndots)，所以会把本地域给加上去
+该操作在ares_search.c中ares_search函数中
+
 cares.ares_set_servers(self.channel, cares.ares_addr_node* c_servers)
 设置dns请求服务器，设置完成需要free掉c_servers的内存空间，因为ares_set_servers中重新malloc内存空间了。
+在set_servers中，通过finally free内存空间
+            c_servers = <cares.ares_addr_node*>malloc(sizeof(cares.ares_addr_node) * length)
+            if not c_servers:
+                raise MemoryError
+            try:
+                index = 0
+                for server in servers:
+                    ...
+                c_servers[length - 1].next = NULL
+                index = cares.ares_set_servers(self.channel, c_servers)
+                if index:
+                    raise ValueError(strerror(index))
+            finally:
+                free(c_servers)
+
+#ares.h
+struct ares_options {
+  int flags;
+  int timeout; /* in seconds or milliseconds, depending on options */
+  int tries;
+  int ndots;
+  unsigned short udp_port;
+  unsigned short tcp_port;
+  int socket_send_buffer_size;
+  int socket_receive_buffer_size;
+  struct in_addr *servers;
+  int nservers;
+  char **domains;
+  int ndomains;
+  char *lookups;
+  ares_sock_state_cb sock_state_cb;
+  void *sock_state_cb_data;
+  struct apattern *sortlist;
+  int nsort;
+  int ednspsz;
+};
+
+def __init__(...)
+    options.sock_state_cb = <void*>gevent_sock_state_callback
+    options.sock_state_cb_data = <void*>self
 

@@ -1,0 +1,2 @@
+1.主动发送消息
+response out of time limit => 说明该用户在48小时内没有和公众号互动

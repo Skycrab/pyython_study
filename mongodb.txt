@@ -15,3 +15,36 @@ Page.objects(comments_by=”joe”).update(inc__votes=1)
 
 # 更新嵌入文档comments字段by的值为joe的文档字段votes设置为1
 Page.objects(comments_by=”joe”).update(set__votes=1)
+
+
+
+
+
+django使用
+
+1.获取大数据时使用iterator
+news_list = News.objects.filter(title__contains=u'违法')
+for news in news_list.iterator():
+    print news
+
+使用 filter and exclude 在数据库层面执行过滤操作
+news_list = News.objects.filter(title__contains=u'和谐').exclude(status=1)
+使用 F() object query expressions 在同一模型中使用不同字段进行对比过滤
+# 查询所有title和sub_title相同的数据
+queryset = News.objects.filter(title=F('sub_title'))
+使用 注解
+# 给每个对象添加一个news_count的属性
+cl = Channel.objects.filter(parent__id=1).annotate(news_count=Count('news'))
+print cl[0].news_count
+
+
+当只需要一个字段的值，返回list或者dict时，使用
+values
+news_list = News.objects.values('title').filter(channel__id=1)
+print news_list
+# [{'title': ''}, ...]
+values_list
+news_list = News.objects.values_list('title').filter(channel__id=1)
+print news_list
+# [('新闻标题',),('新闻标题', ) ...]
+
