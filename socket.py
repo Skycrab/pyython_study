@@ -589,7 +589,24 @@ gevent.sleep(10)
 
 
 
-14.c-ares
+14.c-ares http://c-ares.haxx.se/docs.html
+
+如何证明的确是异步呢:
+#coding=utf8
+import socket
+import gevent
+from gevent import get_hub
+from gevent.resolver_ares import Resolver
+r = get_hub().resolver = Resolver(servers=['8.8.8.8'])
+
+def f(w):
+    print w,r.gethostbyname(w)
+for w in ['www.google.com','www.baidu.com','www.apple.com']:
+    gevent.spawn(f,w)
+
+gevent.sleep(6)
+试着跑一遍你就知道了？
+
 
 cares.ares_library_init(cares.ARES_LIB_INIT_ALL)
 初始化ares库，其实只对windows平台做了处理，主要是为了加载iphlpapi.dll，在非windows平台可不调用。
@@ -604,7 +621,8 @@ cares.ares_destroy(self.channel)
 
 cares.ares_init_options(&channel, &options, optmask)
 这是ares中最核心的函数，用于初始化channel,options，optmask主要是通过channel的__init__构造
-def __init__(self, object loop, flags=None, timeout=None, tries=None, ndots=None,
+cdef public class channel [object PyGeventAresChannelObject, type PyGeventAresChannel_Type]:
+    def __init__(self, object loop, flags=None, timeout=None, tries=None, ndots=None,
                  udp_port=None, tcp_port=None, servers=None):
 flags用于控制一查询行为，如ARES_FLAG_USEVC，将只发送TCP请求(我们知道DNS既有TCP也有UDP)
 ARES_FLAG_PRIMARY :只向第一个服务器发送请求，还有其它选项参考ares_init_options函数文档
@@ -634,29 +652,96 @@ cares.ares_set_servers(self.channel, cares.ares_addr_node* c_servers)
             finally:
                 free(c_servers)
 
+你可能很好奇，c-ares是如何和gevent(libev)的socket关联起来的，因为DNS的本质也是
+socket请求，所以底层也是需要使用操作系统提供的epoll等机制，而c-ares提供了socket状态变化的接口，
+这就可以让c-ares运行在libev上面，所有的魔法其实都是ares_options.sock_state_cb向外提供的。
 #ares.h
 struct ares_options {
   int flags;
   int timeout; /* in seconds or milliseconds, depending on options */
   int tries;
-  int ndots;
-  unsigned short udp_port;
-  unsigned short tcp_port;
-  int socket_send_buffer_size;
-  int socket_receive_buffer_size;
-  struct in_addr *servers;
-  int nservers;
-  char **domains;
-  int ndomains;
-  char *lookups;
+  ....
   ares_sock_state_cb sock_state_cb;
   void *sock_state_cb_data;
-  struct apattern *sortlist;
-  int nsort;
-  int ednspsz;
 };
+ARES_OPT_SOCK_STATE_CB void (*sock_state_cb)(void *data, int s, int read, int write)
+当dns socket状态改变时将回调sock_state_cb，而在channel的__init__中设置为gevent_sock_state_callback
 
 def __init__(...)
     options.sock_state_cb = <void*>gevent_sock_state_callback
     options.sock_state_cb_data = <void*>self
+
+cdef void gevent_sock_state_callback(void *data, int s, int read, int write):
+    if not data:
+        return
+    cdef channel ch = <channel>data
+    ch._sock_state_callback(s, read, write)
+
+gevent_sock_state_callback只做了一件事就是调用channel的_sock_state_callback,并设置是读是写
+    cdef _sock_state_callback(self, int socket, int read, int write):
+        if not self.channel:
+            return
+        cdef object watcher = self._watchers.get(socket)
+        cdef int events = 0
+        if read:
+            events |= EV_READ
+        if write:
+            events |= EV_WRITE
+        if watcher is None:
+            if not events:
+                return
+            watcher = self.loop.io(socket, events) #socket第一次，启动io watcher
+            self._watchers[socket] = watcher
+        elif events: #已有watcher,判断事件是否变化了
+            if watcher.events == events:
+                return
+            watcher.stop()
+            watcher.events = events #设置新状态
+        else:
+            watcher.stop()
+            self._watchers.pop(socket, None)
+            if not self._watchers:
+                self._timer.stop()
+            return #没有事件了，也就是都处理完了，将回调我们的最终回调函数(如调用gethostbyname时设置的回调)
+        watcher.start(self._process_fd, watcher, pass_events=True) #watcher设置回调
+        self._timer.again(self._on_timer) #让c-ares每秒处理一下超时和broken_connections
+
+前面io wather的回调self._process_fd主要就是调用cares.ares_process_fd对指定的文件描述符继续处理，
+cares.ARES_SOCKET_BAD代表该事件不做处理，其实也就是该事件已经处理完了。
+
+    def _process_fd(self, int events, object watcher):
+        if not self.channel:
+            return
+        cdef int read_fd = watcher.fd #只处理的文件描述符
+        cdef int write_fd = read_fd
+        if not (events & EV_READ): #没有可读事件，将读fd设为"不处理"
+            read_fd = cares.ARES_SOCKET_BAD
+        if not (events & EV_WRITE): #没有可写事件，将写fd设为"不处理"
+            write_fd = cares.ARES_SOCKET_BAD
+        cares.ares_process_fd(self.channel, read_fd, write_fd)
+
+其实到上面c-ares流程已经差不多了，最后会回调设置的最终回调，我们来看一下gethostbyname的操作
+定义于resolver_ares.py的gethostbyname函数，调用的是gethostbyname_ex
+   def gethostbyname_ex(self, hostname, family=AF_INET):
+        while True:
+            ares = self.ares
+            try:
+                waiter = Waiter(self.hub) #使用Waiter
+                ares.gethostbyname(waiter, hostname, family) #调用ares.gethostbyname,设置回调为waiter
+                result = waiter.get() #我们知道，waiter没有结果时会切换到hub,完美的和gevent结合起来
+                if not result[-1]:
+                    raise gaierror(-5, 'No address associated with hostname')
+                return result
+            except gaierror:
+                if ares is self.ares:
+                    raise
+Waiter定义了__call__方法，所以可以直接作为回调函数
+ares.gethostbyname主要就是调用了cares.ares_gethostbyname(self.channel, name, family, <void*>gevent_ares_host_callback, <void*>arg)
+当DNS请求成功或失败都会回调gevent_ares_host_callback
+而gevent_ares_host_callback会回调上面的waiter,并把结果传给waiter,这边可以自己看下代码，比较简单。
+waiter.__call__会switch到之前切换的greenlet,即前面的waiter.get()处，此时将返回result,gethostbyname成功执行。
+
+c-ares真的很美，提供了几个接口，就可以让自己和其它的框架完美结合，very nice！！！
+
+
 
