@@ -175,5 +175,14 @@ top此时就是ctx上下文对象，而getattr(top, "request")将返回ctx的req
 
 在wsgi_app的finally中会调用ctx.auto_pop(error),会根据情况判断是否清除放在_request_ctx_stack中的ctx。
 
+上面是我简化的代码，其实在RequestContext push中_app_ctx_stack = LocalStack()是None，也会把app push进去，对应的
+app上下文对象为AppContext。
+我们知道flask还有一个神秘的对象g，flask从0.10开始g是和app绑定在一起的(http://flask.pocoo.org/docs/0.10/api/#flask.g)，
+g是AppContext的一个成员变量。虽然说g是和app绑定在一起的，但不同请求的AppContext是不同的，所以g还是不同。
+也就是说你不能再一个视图中设置g.name，然后再另一个视图中使用g.name，会提示AttributeError
+
+
+http://linuxlearn.net/news/new/105/14655/
+
 到这里各位小伙伴们都明白了吧，flask以优雅的方式给我们提供了很大的便利，自己做了很多的工作。
 
