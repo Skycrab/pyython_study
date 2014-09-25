@@ -186,3 +186,31 @@ http://linuxlearn.net/news/new/105/14655/
 
 到这里各位小伙伴们都明白了吧，flask以优雅的方式给我们提供了很大的便利，自己做了很多的工作。
 
+
+2.flask 2014/9/25
+
+#1
+在Flask警告:Flask的第一个参数
+因为我们大都习惯直接 app = Flask(__name__)，这是由前提的
+1.在单独的模块中，可以直接Flask(__name__)
+2.在包的__init__.py中也可以直接Flask(__name__)
+但是如果是在application/app.py中(application是一个包)就不能直接使用__name__
+因为在app.py中的__name__指向的是
+
+#2 flask instance_path概念
+一般我们配置config时都会把配置文件放在包下，这是因为默认读取配置文件使用的是root_path
+app = Flask(__name__, instance_path='/path/to/instance/folder',instance_relative_config=True)
+instance_relative_config为True时配置文件将使用instance_path
+
+#3 flask 信号
+信号用来做通知使用，比如当模板渲染完成会通知所有已订阅“模板渲染”这个信号
+在flask.signal中
+template_rendered = _signals.signal('template-rendered')
+当模板渲染完毕后会发送完成信息，app是发送者，其它的是可变参数
+template_rendered.send(app, template=template, context=context)
+
+如果想订阅该信号，用connect，record是回调函数，app是信号的发送者，就是说只有app发送的你才接受
+template_rendered.connect(record, app)
+
+disconnect取消订阅
+template_rendered.disconnect(record, app)
