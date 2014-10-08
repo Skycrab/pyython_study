@@ -214,3 +214,102 @@ template_rendered.connect(record, app)
 
 disconnect取消订阅
 template_rendered.disconnect(record, app)
+
+
+3.flask ext import 原理(2014/10/8)
+
+主要通过sys.meta_path实现的
+当导入 from falsk.ext.example import E是将会执行flask/ext/__init__.py
+def setup():
+    from ..exthook import ExtensionImporter
+    importer = ExtensionImporter(['flask_%s', 'flaskext.%s'], __name__)
+    importer.install()
+
+install将会向sys.meta_path添加模块装载类，当import时会调用其find_module，如果返回非None,会调用load_module加载
+
+比如当我们 from flask.ext.script import Manager时
+会调用find_module('flask.ext.script')，prefinx是flask.ext所以将会调用load_module()
+此时将会尝试import flask_script模块或flaskext.script
+
+   def install(self):
+        sys.meta_path[:] = [x for x in sys.meta_path if self != x] + [self]
+
+    def find_module(self, fullname, path=None):
+        if fullname.startswith(self.prefix):
+            return self
+
+    def load_module(self, fullname):
+        modname = fullname.split('.', self.prefix_cutoff)[self.prefix_cutoff]
+        for path in self.module_choices:
+            realname = path % modname
+            __import__(realname)
+
+4.flask bootstrap扩展原理
+如果app没有做特殊配置的话，将会使用cdn版本，
+配置app.config['BOOTSTRAP_SERVE_LOCAL'] = True时，将会使用本地bootstrap
+
+flask_bootstrap是通过blueprint实现的，下面均假设配置了BOOTSTRAP_SERVE_LOCAL=True
+<link href="{{bootstrap_find_resource('css/bootstrap.css', cdn='bootstrap')}}">将产生url为
+"/static/bootstrap/css/bootstrap.min.css?bootstrap=3.0.3.1"
+这里有两点需要注意:
+
+1.前缀地址/static/bootstrap是通过配置static_url_path=app.static_url_path + '/bootstrap'实现的
+所以访问该地址时请求会交给前面提到的blutprint处理，那么通过url_for指定的enter_point就需要指明是
+bootstrap blueprint的static，这是通过配置local指定的
+所以local = StaticCDN('bootstrap.static', rev=True)
+
+2.不做任何配置会加入版本号参数，可通过配置app.config["BOOTSTRAP_QUERYSTRING_REVVING"]=False关闭
+但加入版本号有一个最大的好处就是对升级有好处，因为静态文件一帮缓存时间都很长，有了版本号妈妈再也不用担心我的更新升级了。 
+
+5. flask moment原理
+
+    def init_app(self, app):
+        if not hasattr(app, 'extensions'):
+            app.extensions = {}
+        app.extensions['moment'] = _moment
+        app.context_processor(self.context_processor)
+
+    @staticmethod
+    def context_processor():
+        return {
+            'moment': current_app.extensions['moment']
+        }
+
+通过app.context_processor给模板上下文添加了额为属性
+def render_template(template_name_or_list, **context):
+    ctx.app.update_template_context(context)
+
+在render_template中会把前面注册的变量添加到context,所以在模板中就可以使用moment了，
+而flask bootstrap是通过app.jinja_env.globals['bootstrap_find_resource'] = bootstrap_find_resource实现的
+
+我们知道flask在初始化jinja环境的时候就将request,g,session等注入到全局了
+rv.globals.update(
+            url_for=url_for,
+            get_flashed_messages=get_flashed_messages,
+            config=self.config,
+            # request, session and g are normally added with the
+            # context processor for efficiency reasons but for imported
+            # templates we also want the proxies in there.
+            request=request,
+            session=session,
+            g=g
+        )
+但我在看源码时发现_default_template_ctx_processor也会注入g，request，如下
+def _default_template_ctx_processor():
+    """Default template context processor.  Injects `request`,
+    `session` and `g`.
+    """
+    reqctx = _request_ctx_stack.top
+    appctx = _app_ctx_stack.top
+    rv = {}
+    if appctx is not None:
+        rv['g'] = appctx.g
+    if reqctx is not None:
+        rv['request'] = reqctx.request
+        rv['session'] = reqctx.session
+    return rv
+
+这不是重复嘛，有啥必要呢？
+哈哈，认真看上面rv.globals.update的注释部分能大概明白。
+flask模板可以使用宏，需要使用import导入，此时导入的模板不能访问不能访问当前模板的本地变量，只能使用全局变量。
+这也就是为什么global中有g,request,session的理由。而本地变量导入g等是为了效率的原因，具体细节需要参考jinja2的文档。
