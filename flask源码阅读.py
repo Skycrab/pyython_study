@@ -313,3 +313,52 @@ def _default_template_ctx_processor():
 哈哈，认真看上面rv.globals.update的注释部分能大概明白。
 flask模板可以使用宏，需要使用import导入，此时导入的模板不能访问不能访问当前模板的本地变量，只能使用全局变量。
 这也就是为什么global中有g,request,session的理由。而本地变量导入g等是为了效率的原因，具体细节需要参考jinja2的文档。
+
+flask moment原理很简单，使用带有时间的格式话字符串在dom加载后，使用moment.js处理一下，
+该步操作有moment.include_moment()完成。
+如果使用其它语言，如中文，调用moment.lang('zh-cn')
+如果使用了flask bootstrap，只需要在最后添加以下代码即可
+{% block scripts %}
+{{ super() }}
+{{ moment.include_moment() }}
+{{ moment.lang('zh-cn') }}
+{% endblock %}
+
+flask moment还提供了过了多长时间统计，refresh为True时，每分钟刷新一次，refresh也可为具体的刷新时间，单位为分钟
+{{ moment(current_time).fromNow(refresh=True) }}
+
+
+6.flask flash原理
+flask flash消息是通过session存放的，get_flashed_messages会从session中取出，并在_request_ctx_stack.top.flashes
+上做个拷贝，由于取session中的值需要解码及认证，其它部分使用就可以减少这步操作
+
+flask session =》 csrf token , flash, 
+
+
+7.flask sqlalchemy
+app.config['SQLALCHEMY_ECHO'] = True =》配置输出sql语句
+重新时BaseQuery对象输出就是sql语句 
+
+class Role(db.Model):
+    __tablename__ = 'roles'
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(64), unique=True)
+    users = db.relationship('User', backref='role', lazy='dynamic')
+
+
+class User(db.Model):
+    __tablename__ = 'users'
+    id = db.Column(db.Integer, primary_key=True)
+    username = db.Column(db.String(64), unique=True, index=True)
+    role_id = db.Column(db.Integer, db.ForeignKey('roles.id'))
+
+对db.relationship lazy的理解:
+假设role是已经获取的一个Role的实例
+lazy:dynamic => role.users不会返回User的列表， 返回的是sqlalchemy.orm.dynamic.AppenderBaseQuery对象
+                当执行role.users.all()是才会真正执行sql，这样的好处就是可以继续过滤
+
+lazy:select => role.users直接返回User实例的列表，也就是直接执行sql
+
+
+db.session.commit只有在对象有变化时才会真的执行update
+
