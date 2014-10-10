@@ -349,8 +349,99 @@ app.config['SQLALCHEMY_COMMIT_ON_TEARDOWN'] = True =》每次request自动提交
             return response_or_exc
 response_or_exc为异常值，默认为sys.exc_info()[1]
 
+上面self.session.remove()表示每次请求后都会销毁self.session，为什么要这么做呢？
+这就要说说sqlalchemy的session对象了。
 
-重新时BaseQuery对象输出就是sql语句 
+from sqlalchemy.orm import sessionmaker
+session = sessionmaker()
+一帮我们会通过sessionmaker()这个工厂函数创建session，但这个session并不能用在多线程中，为了支持多线程操作，
+sqlalchemy提供了scoped_session，通过名字反映出scoped_session是通过某个作用域实现的
+所以在多线程中一帮都是如下使用session
+from sqlalchemy.orm import scoped_session, sessionmaker
+session = scoped_session(sessionmaker())
+
+我们来看看scoped_session是如何提供多线程环境支持的
+class scoped_session(object):
+    def __init__(self, session_factory, scopefunc=None):
+        
+        self.session_factory = session_factory
+        if scopefunc:
+            self.registry = ScopedRegistry(session_factory, scopefunc)
+        else:
+            self.registry = ThreadLocalRegistry(session_factory)
+
+__init__中，session_factory是创建session的工厂函数，而sessionmaker就是一工厂函数(其实是定义了__call__的函数)
+而scopefunc就是能产生某个作用域的函数，如果不提供将使用ThreadLocalRegistry
+
+class ThreadLocalRegistry(ScopedRegistry):
+    def __init__(self, createfunc):
+        self.createfunc = createfunc
+        self.registry = threading.local()
+
+    def __call__(self):
+        try:
+            return self.registry.value
+        except AttributeError:
+            val = self.registry.value = self.createfunc()
+            return val
+从上面__call__可以看出，每次都会创建新的session，并发在线程本地变量中，你可能会好奇__call__是在哪里调用的？
+def instrument(name):
+    def do(self, *args, **kwargs):
+        return getattr(self.registry(), name)(*args, **kwargs)
+    return do
+
+for meth in Session.public_methods:
+    setattr(scoped_session, meth, instrument(meth))
+正如我们所看到的，当我们调用session.query将会调用 getattr(self.registry(), 'query')，self.registry()就是调用__call__的时机
+
+但是在flask_sqlalchemy中并没有使用ThreadLocalRegistry，创建scoped_session过程如下
+
+# Which stack should we use?  _app_ctx_stack is new in 0.9
+connection_stack = _app_ctx_stack or _request_ctx_stack
+
+    def __init__(self, app=None,
+                 use_native_unicode=True,
+                 session_options=None):
+        session_options.setdefault(
+            'scopefunc', connection_stack.__ident_func__
+        )
+        self.session = self.create_scoped_session(session_options)
+
+    def create_scoped_session(self, options=None):
+        """Helper factory method that creates a scoped session."""
+        if options is None:
+            options = {}
+        scopefunc=options.pop('scopefunc', None)
+        return orm.scoped_session(
+            partial(_SignallingSession, self, **options), scopefunc=scopefunc
+        )
+
+我们看到scopefunc被设置为connection_stack.__ident_func__，而connection_stack就是flask中app上下文，
+如果你看过前一篇文章你就知道__ident_func__其实就是在多线程中就是thrading.get_ident，也就是线程id
+我们看看ScopedRegistry是如何通过_操作的
+
+class ScopedRegistry(object):
+    def __init__(self, createfunc, scopefunc):
+        self.createfunc = createfunc
+        self.scopefunc = scopefunc
+        self.registry = {}
+
+    def __call__(self):
+        key = self.scopefunc()
+        try:
+            return self.registry[key]
+        except KeyError:
+            return self.registry.setdefault(key, self.createfunc())
+
+代码也很简单，其实也就是根据线程id创建对应的session对象，到这里我们基本已经了解了flask_sqlalchemy的魔法了，
+和flask cookie,g有异曲同工之妙，这里有两个小问题？
+1.flask_sqlalchemy能否使用ThreadLocalRegistry？
+    大部分情况都是可以的，但如果wsgi对多并发使用的是greenlet的模式就不适用了
+2.上面create_scoped_session中partial是干嘛的？
+    前面我们说过scoped_session的session_factory是可调用对象，但_SignallingSession类并没有定义__call__，所以通过partial支持
+
+
+查询时的BaseQuery对象输出就是sql语句 
 
 class Role(db.Model):
     __tablename__ = 'roles'
