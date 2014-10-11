@@ -440,6 +440,8 @@ class ScopedRegistry(object):
 2.上面create_scoped_session中partial是干嘛的？
     前面我们说过scoped_session的session_factory是可调用对象，但_SignallingSession类并没有定义__call__，所以通过partial支持
 
+到这里你就知道为什么每次请求结束要self.session.remove()，不然为导致存放session的字段太大
+
 
 查询时的BaseQuery对象输出就是sql语句 
 
