@@ -213,6 +213,45 @@ struct.pack('0s','1234') => 长度为0的字符串
 
 17.threading _MainThread
 
+
+
+# Special thread class to represent the main thread
+# This is garbage collected through an exit handler
+
+class _MainThread(Thread):
+
+    def __init__(self):
+        Thread.__init__(self, name="MainThread")
+        self._Thread__started.set()
+        self._set_ident()
+        with _active_limbo_lock:
+            _active[_get_ident()] = self
+
+    def _set_daemon(self):
+        return False
+
+    def _exitfunc(self):
+        self._Thread__stop()
+        t = _pickSomeNonDaemonThread()
+        if t:
+            if __debug__:
+                self._note("%s: waiting for other threads", self)
+        while t:
+            t.join()
+            t = _pickSomeNonDaemonThread()
+        if __debug__:
+            self._note("%s: exiting", self)
+        self._Thread__delete()
+
+def _pickSomeNonDaemonThread():
+    for t in enumerate():
+        if not t.daemon and t.is_alive():
+            return t
+    return None
+
+
+    
+
 pythonrun.c:
 
 /* Wait until threading._shutdown completes, provided
