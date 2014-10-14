@@ -210,3 +210,33 @@ struct.pack('0s','1234') => 长度为0的字符串
 有时候，必须对齐结构的末尾，可使用该类型的来结束结构格式字符串，重复次数为0
 如"llh01" =>l是4字节对齐，由于有h,所以会在最后插入两个填充字节。
 这只适用于使用本机大小和对齐方式，标准大小和对齐方式不会强制实施对齐规则。
+
+17.threading _MainThread
+
+pythonrun.c:
+
+/* Wait until threading._shutdown completes, provided
+   the threading module was imported in the first place.
+   The shutdown routine will wait until all non-daemon
+   "threading" threads have completed. */
+static void
+wait_for_thread_shutdown(void)
+{
+#ifdef WITH_THREAD
+    PyObject *result;
+    PyThreadState *tstate = PyThreadState_GET();
+    PyObject *threading = PyMapping_GetItemString(tstate->interp->modules,
+                                                  "threading");
+    if (threading == NULL) {
+        /* threading not imported */
+        PyErr_Clear();
+        return;
+    }
+    result = PyObject_CallMethod(threading, "_shutdown", "");
+    if (result == NULL)
+        PyErr_WriteUnraisable(threading);
+    else
+        Py_DECREF(result);
+    Py_DECREF(threading);
+#endif
+}
