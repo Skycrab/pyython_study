@@ -249,8 +249,13 @@ def _pickSomeNonDaemonThread():
             return t
     return None
 
+# Create the main thread object,
+# and make it available for the interpreter
+# (Py_Main) as threading._shutdown.
 
-    
+_shutdown = _MainThread()._exitfunc
+
+
 
 pythonrun.c:
 
@@ -279,3 +284,58 @@ wait_for_thread_shutdown(void)
     Py_DECREF(threading);
 #endif
 }
+
+
+import os
+import sys
+import Queue
+import threading
+import urllib2
+import time
+
+#threading._VERBOSE = True
+
+class D(threading.Thread):
+    def __init__(self, queue):
+        threading.Thread.__init__(self)
+        self.queue = queue
+    def run(self):
+        try:
+            while  True:
+                url = self.queue.get()
+                self.download_file(url)
+                self.queue.task_done()
+        except:
+            print sys.exc_info()
+
+    def download_file(self, url):
+        h = urllib2.urlopen(url)
+        f = os.path.basename(url)+'.html'
+        with open(f,'wb') as f:
+            while  True:
+                c = h.read(1024)
+                if not c:
+                    break
+                f.write(c)
+
+if __name__ == "__main__":
+    urls= ['http://www.baidu.com','http://www.sina.com']
+    queue = Queue.Queue()
+    for i in range(5):
+        t = D(queue)
+        t.setDaemon(True)
+        t.start()
+
+    for u in urls:
+        queue.put(u)
+
+    queue.join()
+    time.sleep(3)
+
+
+你可能会很好奇，下载线程的run不是死循环吗，那线程是如何退出的呢？
+关键点就是t.setDaemon(True)，将线程设置为守护线程，当queue任务都结束时，主线程结束将强制结束所有子线程，
+这也很明显，主线程结束,python将销毁运行时环境，子线程肯定被结束。
+所以设置daemon为True不会导致死循环。
+
+当把setDaemon(True)注释掉后，主线程将等待非守护线程的结束，这时将导致死循环。
