@@ -339,3 +339,26 @@ if __name__ == "__main__":
 所以设置daemon为True不会导致死循环。
 
 当把setDaemon(True)注释掉后，主线程将等待非守护线程的结束，这时将导致死循环。
+
+
+18. flask cache
+
+python3中引入了__qualname__ 属性，qualified name for class and functions
+
+class Adder(object):
+    @cache.memoize()
+    def add(self, b):
+        return b + random.random()
+
+addr = Adder()
+addr.add(2)
+此时fname, instance_fname分别为__main__.Adder.add, __main__.Adder.add.__main__.Adderobjectat0x02D642B0
+所以不同对象的instance_fname是不一样的，当你cache.delete_memoized(addr.add)时cache会更新instance_fname对应的value值，
+并不会更新fname对应的value值。fname和instance_fname对应value值加起来称为version_data，而保存add.add(2)时的key是包含version_data的.
+addr1 = Adder()
+addr1.add(2)
+当删除cache.delete_memoized(addr1.add)时，由于instance_fname改变了，所以version_data也不同，最后导致cache中的key也不同，
+所以实现了各个实例的分离
+
+而cache.delete_memoized(Adder.add)时，fname和addr1是相同的，但instance_fname为None，此时就会更新cache中的fname，
+调用add1.add时由于version_data与之前不一致，导致缓存失效，实现了当调用类方法是导致所有实例方法的缓存失效。
